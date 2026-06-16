@@ -1,0 +1,19 @@
+{
+  "name": "queue-appointment-system",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "seed": "cd server && npm run seed",
+    "dev": "concurrently -n backend,frontend -c blue,green \"cd server && PORT=3205 npm run dev\" \"cd client && VITE_PORT=5205 VITE_API_PORT=3205 npm run dev\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build": "cd server && npm run build && cd ../client && npm run build",
+    "start": "cd server && PORT=3205 npm run start",
+    "dev:backend": "cd server && PORT=3205 npm run dev",
+    "dev:frontend": "cd client && VITE_PORT=5205 VITE_API_PORT=3205 npm run dev"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
