@@ -41,12 +41,16 @@ export const api = {
   bookAppointment: (body: any) => request('/appointments', { method: 'POST', body: JSON.stringify(body) }),
   getMyAppointments: () => request('/appointments/mine'),
   cancelAppointment: (id: number) => request(`/appointments/${id}/cancel`, { method: 'PUT' }),
+  submitReview: (id: number, rating: number, comment: string) =>
+    request(`/appointments/${id}/review`, { method: 'POST', body: JSON.stringify({ rating, comment }) }),
 
   // Doctor
   getDoctorAppointments: () => request('/doctor/appointments'),
   callNext: () => request('/doctor/call-next', { method: 'POST' }),
   writeDiagnosis: (id: number, diagnosis: string) =>
     request(`/doctor/appointments/${id}/diagnosis`, { method: 'PUT', body: JSON.stringify({ diagnosis }) }),
+  getDoctorDetail: (id: number) => request(`/doctor/detail/${id}`),
+  getDoctorReviews: (id: number) => request(`/doctor/${id}/reviews`),
 
   // Queue
   getQueueDepartment: (id: number) => request(`/queue/department/${id}`),

@@ -73,15 +73,48 @@ router.post('/', authMiddleware(['patient']), (req: Request, res: Response) => {
 router.get('/mine', authMiddleware(['patient']), (req: Request, res: Response) => {
   const appointments = db.prepare(`
     SELECT a.*, d.name as doctor_name, d.title as doctor_title,
-           dep.name as department_name, ts.start_time, ts.end_time
+           dep.name as department_name, ts.start_time, ts.end_time,
+           CASE WHEN r.id IS NOT NULL THEN 1 ELSE 0 END as has_review
     FROM appointments a
     JOIN doctors d ON a.doctor_id = d.id
     JOIN departments dep ON d.department_id = dep.id
     JOIN time_slots ts ON a.slot_id = ts.id
+    LEFT JOIN reviews r ON a.id = r.appointment_id
     WHERE a.patient_id = ?
     ORDER BY a.date DESC, a.queue_number
   `).all(req.user!.id);
   res.json(appointments);
+});
+
+// Submit a review for a completed appointment (patient only)
+router.post('/:id/review', authMiddleware(['patient']), (req: Request, res: Response) => {
+  const { rating, comment } = req.body;
+  const patientId = req.user!.id;
+  const appointmentId = req.params.id;
+
+  if (!rating || rating < 1 || rating > 5) {
+    res.status(400).json({ message: '请选择1-5星评分' });
+    return;
+  }
+
+  const appt = db.prepare(
+    'SELECT * FROM appointments WHERE id = ? AND patient_id = ?'
+  ).get(appointmentId, patientId) as any;
+  if (!appt) { res.status(404).json({ message: '预约不存在' }); return; }
+  if (appt.status !== 'completed') {
+    res.status(400).json({ message: '仅已完成的就诊可评价' });
+    return;
+  }
+
+  const existing = db.prepare('SELECT id FROM reviews WHERE appointment_id = ?').get(appointmentId);
+  if (existing) { res.status(400).json({ message: '该预约已评价过了' }); return; }
+
+  db.prepare(`
+    INSERT INTO reviews (appointment_id, doctor_id, patient_id, rating, comment)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(appointmentId, appt.doctor_id, patientId, rating, comment || '');
+
+  res.json({ message: '评价提交成功' });
 });
 
 // Cancel appointment (patient)

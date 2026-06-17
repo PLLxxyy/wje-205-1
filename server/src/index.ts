@@ -28,9 +28,18 @@ app.use('/api/auth', (req, res, next) => {
 app.use('/api/departments', departmentRoutes);
 app.use('/api/queue', queueRoutes);
 
+// Public doctor routes (detail and reviews)
+app.use('/api/doctor/detail', doctorRoutes);
+app.use('/api/doctor', (req, res, next) => {
+  if (req.method === 'GET' && /^\/\d+\/reviews$/.test(req.path)) {
+    doctorRoutes(req, res, next);
+  } else {
+    authMiddleware()(req, res, next);
+  }
+}, doctorRoutes);
+
 // Protected routes
 app.use('/api/appointments', appointmentRoutes);
-app.use('/api/doctor', doctorRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Health check

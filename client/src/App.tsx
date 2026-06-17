@@ -51,6 +51,31 @@ interface Appointment {
   end_time?: string;
   patient_name?: string;
   patient_phone?: string;
+  has_review?: number;
+}
+
+interface Review {
+  id: number;
+  appointment_id: number;
+  doctor_id: number;
+  patient_id: number;
+  rating: number;
+  comment: string;
+  created_at: string;
+  patient_name?: string;
+}
+
+interface DoctorReviews {
+  review_count: number;
+  avg_rating: number;
+  distribution: Record<number, number>;
+  reviews: Review[];
+}
+
+interface DoctorDetail extends Doctor {
+  avatar: string;
+  department_id: number;
+  department_name: string;
 }
 
 // ============ Auth Context ============
@@ -96,6 +121,7 @@ type Route =
   | { page: 'book'; doctorId: number; doctorName: string; deptName: string }
   | { page: 'my-appointments' }
   | { page: 'doctor' }
+  | { page: 'doctor-detail'; id: number }
   | { page: 'queue-display'; departmentId: number }
   | { page: 'queue-overview' }
   | { page: 'admin' };
@@ -114,6 +140,7 @@ function parseHash(): Route {
   if (parts[0] === 'departments' && parts[1]) return { page: 'department', id: Number(parts[1]) };
   if (parts[0] === 'book' && parts[1]) return { page: 'book', doctorId: Number(parts[1]), doctorName: decodeURIComponent(parts[2] || ''), deptName: decodeURIComponent(parts[3] || '') };
   if (parts[0] === 'my-appointments') return { page: 'my-appointments' };
+  if (parts[0] === 'doctor-detail' && parts[1]) return { page: 'doctor-detail', id: Number(parts[1]) };
   if (parts[0] === 'doctor') return { page: 'doctor' };
   if (parts[0] === 'queue' && parts[1]) return { page: 'queue-display', departmentId: Number(parts[1]) };
   if (parts[0] === 'queue-overview') return { page: 'queue-overview' };
@@ -129,6 +156,7 @@ function routeToHash(r: Route): string {
     case 'book': return `/book/${r.doctorId}/${encodeURIComponent(r.doctorName)}/${encodeURIComponent(r.deptName)}`;
     case 'my-appointments': return '/my-appointments';
     case 'doctor': return '/doctor';
+    case 'doctor-detail': return `/doctor-detail/${r.id}`;
     case 'queue-display': return `/queue/${r.departmentId}`;
     case 'queue-overview': return '/queue-overview';
     case 'admin': return '/admin';
@@ -324,7 +352,8 @@ function DepartmentPage({ id }: { id: number }) {
       <p className="text-gray mb-16">{dept.description}</p>
       <div className="grid grid-2">
         {(dept.doctors || []).map((doc: Doctor) => (
-          <div key={doc.id} className="card">
+          <div key={doc.id} className="card" style={{ cursor: 'pointer' }}
+               onClick={() => navigate({ page: 'doctor-detail', id: doc.id })}>
             <div className="doctor-card">
               <div className="doctor-avatar">{doc.name[0]}</div>
               <div className="doctor-info">
@@ -335,7 +364,11 @@ function DepartmentPage({ id }: { id: number }) {
                 <div className="doctor-bio">{doc.bio}</div>
               </div>
             </div>
-            <div className="mt-16" style={{ textAlign: 'right' }}>
+            <div className="mt-16" style={{ textAlign: 'right' }} onClick={e => e.stopPropagation()}>
+              <button className="btn btn-ghost btn-sm" style={{ marginRight: 8 }}
+                      onClick={() => navigate({ page: 'doctor-detail', id: doc.id })}>
+                查看详情
+              </button>
               {user?.role === 'patient' ? (
                 <button className="btn btn-primary" onClick={() => navigate({ page: 'book', doctorId: doc.id, doctorName: doc.name, deptName: dept.name })}>
                   预约挂号
@@ -461,12 +494,39 @@ function BookingPage({ doctorId, doctorName, deptName }: { doctorId: number; doc
   );
 }
 
+// ============ Star Rating Component ============
+function StarRating({ value, onChange, size = 18 }: { value: number; onChange?: (v: number) => void; size?: number }) {
+  const [hover, setHover] = useState(0);
+  const canChange = typeof onChange === 'function';
+  return (
+    <div className="star-rating" style={{ display: 'inline-flex', gap: 4 }}>
+      {[1, 2, 3, 4, 5].map(n => (
+        <span
+          key={n}
+          style={{
+            fontSize: size,
+            cursor: canChange ? 'pointer' : 'default',
+            color: (hover || value) >= n ? '#f59e0b' : '#e5e7eb',
+            userSelect: 'none',
+          }}
+          onMouseEnter={() => canChange && setHover(n)}
+          onMouseLeave={() => canChange && setHover(0)}
+          onClick={() => canChange && onChange!(n)}
+        >★</span>
+      ))}
+    </div>
+  );
+}
+
 // ============ My Appointments Page ============
 function MyAppointmentsPage() {
   const { navigate } = useRouter();
   const { show } = useToast();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [reviewModal, setReviewModal] = useState<{ id: number; doctor_name?: string } | null>(null);
+  const [reviewForm, setReviewForm] = useState({ rating: 5, comment: '' });
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -482,6 +542,27 @@ function MyAppointmentsPage() {
       load();
     } catch (err: any) {
       show(err.message, 'error');
+    }
+  };
+
+  const openReview = (a: Appointment) => {
+    setReviewModal({ id: a.id, doctor_name: a.doctor_name });
+    setReviewForm({ rating: 5, comment: '' });
+  };
+
+  const submitReview = async () => {
+    if (!reviewModal) return;
+    if (!reviewForm.rating) { show('请选择评分', 'error'); return; }
+    setReviewLoading(true);
+    try {
+      await api.submitReview(reviewModal.id, reviewForm.rating, reviewForm.comment);
+      show('评价提交成功', 'success');
+      setReviewModal(null);
+      load();
+    } catch (err: any) {
+      show(err.message, 'error');
+    } finally {
+      setReviewLoading(false);
     }
   };
 
@@ -517,14 +598,23 @@ function MyAppointmentsPage() {
                 <tr key={a.id}>
                   <td className="font-bold text-primary">{a.queue_number}</td>
                   <td>{a.department_name}</td>
-                  <td>{a.doctor_name} <span className="text-sm text-gray">{a.doctor_title}</span></td>
+                  <td onClick={() => navigate({ page: 'doctor-detail', id: a.doctor_id })}
+                      style={{ cursor: 'pointer', color: 'var(--primary)' }}>
+                    {a.doctor_name} <span className="text-sm text-gray">{a.doctor_title}</span>
+                  </td>
                   <td>{a.date}</td>
                   <td>{a.start_time}-{a.end_time}</td>
                   <td><span className={`status-${a.status}`}>{statusText[a.status]}</span></td>
                   <td>{a.diagnosis ? <span className="badge badge-success">已诊断</span> : '-'}</td>
-                  <td>
+                  <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {a.status === 'waiting' && (
                       <button className="btn btn-danger btn-sm" onClick={() => cancel(a.id)}>取消</button>
+                    )}
+                    {a.status === 'completed' && !a.has_review && (
+                      <button className="btn btn-primary btn-sm" onClick={() => openReview(a)}>评价</button>
+                    )}
+                    {a.status === 'completed' && a.has_review && (
+                      <span className="badge badge-info">已评价</span>
                     )}
                   </td>
                 </tr>
@@ -533,6 +623,160 @@ function MyAppointmentsPage() {
           </table>
         </div>
       )}
+
+      {reviewModal && (
+        <div className="modal-overlay" onClick={() => setReviewModal(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 420 }}>
+            <h2>评价医生</h2>
+            <p className="text-gray mb-16">请为 {reviewModal.doctor_name} 医生的就诊服务打分</p>
+            <div className="form-group">
+              <label className="form-label">服务评分</label>
+              <div style={{ padding: '8px 0' }}>
+                <StarRating value={reviewForm.rating} onChange={v => setReviewForm({ ...reviewForm, rating: v })} size={28} />
+                <span style={{ marginLeft: 12, fontSize: 16, fontWeight: 600, color: '#f59e0b' }}>
+                  {reviewForm.rating} 星
+                </span>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">评价内容（选填）</label>
+              <textarea
+                className="form-textarea"
+                value={reviewForm.comment}
+                onChange={e => setReviewForm({ ...reviewForm, comment: e.target.value })}
+                placeholder="请分享您的就诊体验，帮助其他患者..."
+                rows={4}
+              />
+            </div>
+            <div className="flex gap-8" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn btn-ghost" onClick={() => setReviewModal(null)}>取消</button>
+              <button className="btn btn-primary" onClick={submitReview} disabled={reviewLoading}>
+                {reviewLoading ? '提交中...' : '提交评价'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============ Doctor Detail Page ============
+function DoctorDetailPage({ id }: { id: number }) {
+  const { navigate } = useRouter();
+  const auth = useAuth();
+  const [doctor, setDoctor] = useState<DoctorDetail | null>(null);
+  const [reviews, setReviews] = useState<DoctorReviews | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([
+      api.getDoctorDetail(id).catch(() => null),
+      api.getDoctorReviews(id).catch(() => null),
+    ]).then(([d, r]) => {
+      setDoctor(d);
+      setReviews(r);
+    }).finally(() => setLoading(false));
+  }, [id]);
+
+  if (loading) return <div className="container"><div className="loading"><div className="spinner" />加载中...</div></div>;
+  if (!doctor) return <div className="container"><div className="empty-state card"><p>医生不存在</p></div></div>;
+
+  const totalReviews = reviews?.review_count || 0;
+  const avgRating = reviews?.avg_rating || 0;
+
+  return (
+    <div className="container">
+      <button className="back-link" onClick={() => doctor?.department_id ? navigate({ page: 'department', id: doctor.department_id }) : navigate({ page: 'home' })}>← 返回</button>
+
+      <div className="card mb-16">
+        <div className="doctor-card" style={{ alignItems: 'flex-start' }}>
+          <div className="doctor-avatar" style={{ width: 72, height: 72, fontSize: 32 }}>{doctor.name[0]}</div>
+          <div className="doctor-info" style={{ flex: 1 }}>
+            <div style={{ marginBottom: 8 }}>
+              <span className="doctor-name" style={{ fontSize: 24 }}>{doctor.name}</span>
+              <span className="doctor-title" style={{ fontSize: 16 }}>{doctor.title}</span>
+              <span className="badge badge-info" style={{ marginLeft: 12 }}>{doctor.department_name}</span>
+            </div>
+            <div className="doctor-bio" style={{ fontSize: 14 }}>{doctor.bio || '暂无简介'}</div>
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <StarRating value={avgRating} size={22} />
+                <span style={{ fontSize: 22, fontWeight: 700, color: '#f59e0b' }}>{avgRating.toFixed(1)}</span>
+                <span className="text-gray">({totalReviews} 条评价)</span>
+              </div>
+              {auth.user?.role === 'patient' && (
+                <button className="btn btn-primary" onClick={() => navigate({ page: 'book', doctorId: doctor.id, doctorName: doctor.name, deptName: doctor.department_name })}>
+                  预约挂号
+                </button>
+              )}
+              {!auth.user && (
+                <button className="btn btn-ghost" onClick={() => navigate({ page: 'login' })}>登录后预约</button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card mb-16">
+        <div className="card-title">评价统计</div>
+        {totalReviews === 0 ? (
+          <div className="empty-state"><p>暂无评价</p></div>
+        ) : (
+          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+            <div style={{ textAlign: 'center', padding: '0 24px' }}>
+              <div style={{ fontSize: 48, fontWeight: 700, color: '#f59e0b' }}>{avgRating.toFixed(1)}</div>
+              <StarRating value={avgRating} size={20} />
+              <div className="text-sm text-gray mt-4">{totalReviews} 条评价</div>
+            </div>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              {[5, 4, 3, 2, 1].map(n => {
+                const count = reviews?.distribution?.[n] || 0;
+                const percent = totalReviews > 0 ? (count / totalReviews) * 100 : 0;
+                return (
+                  <div key={n} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                    <span style={{ width: 40, fontSize: 13 }}>{n} 星</span>
+                    <div style={{ flex: 1, height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${percent}%`, height: '100%', background: '#f59e0b', borderRadius: 4 }} />
+                    </div>
+                    <span style={{ width: 44, textAlign: 'right', fontSize: 13, color: '#64748b' }}>{count}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-title">患者评价</div>
+        {!reviews?.reviews || reviews.reviews.length === 0 ? (
+          <div className="empty-state"><p>暂无评价，成为第一位评价的患者吧</p></div>
+        ) : (
+          <div>
+            {reviews.reviews.map((r: Review) => (
+              <div key={r.id} style={{ padding: '16px 0', borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#e0f2fe', color: '#0369a1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600 }}>
+                      {(r.patient_name || '患')[0]}
+                    </div>
+                    <span style={{ fontWeight: 500 }}>{r.patient_name || '患者用户'}</span>
+                    <StarRating value={r.rating} size={14} />
+                  </div>
+                  <span className="text-sm text-gray">{r.created_at?.slice(0, 16).replace('T', ' ')}</span>
+                </div>
+                {r.comment && (
+                  <div style={{ paddingLeft: 40, fontSize: 14, color: '#475569', lineHeight: 1.6 }}>
+                    {r.comment}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1048,6 +1292,7 @@ export default function App() {
     if (route.page === 'queue-overview') return <QueueOverviewPage />;
     if (route.page === 'home') return <HomePage />;
     if (route.page === 'department') return <DepartmentPage id={route.id} />;
+    if (route.page === 'doctor-detail') return <DoctorDetailPage id={route.id} />;
 
     // Protected routes
     if (!user) return <LoginPage />;

@@ -67,9 +67,24 @@ db.exec(`
     FOREIGN KEY (slot_id) REFERENCES time_slots(id)
   );
 
+  CREATE TABLE IF NOT EXISTS reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    appointment_id INTEGER NOT NULL UNIQUE,
+    doctor_id INTEGER NOT NULL,
+    patient_id INTEGER NOT NULL,
+    rating INTEGER NOT NULL CHECK(rating >= 1 AND rating <= 5),
+    comment TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    FOREIGN KEY (appointment_id) REFERENCES appointments(id),
+    FOREIGN KEY (doctor_id) REFERENCES doctors(id),
+    FOREIGN KEY (patient_id) REFERENCES patients(id)
+  );
+
   CREATE INDEX IF NOT EXISTS idx_slots_doctor_date ON time_slots(doctor_id, date);
   CREATE INDEX IF NOT EXISTS idx_appointments_doctor_date ON appointments(doctor_id, date);
   CREATE INDEX IF NOT EXISTS idx_appointments_patient ON appointments(patient_id);
+  CREATE INDEX IF NOT EXISTS idx_reviews_doctor ON reviews(doctor_id);
+  CREATE INDEX IF NOT EXISTS idx_reviews_patient ON reviews(patient_id);
 `);
 
 export default db;
