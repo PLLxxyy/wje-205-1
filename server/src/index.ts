@@ -28,10 +28,12 @@ app.use('/api/auth', (req, res, next) => {
 app.use('/api/departments', departmentRoutes);
 app.use('/api/queue', queueRoutes);
 
-// Public doctor routes (detail and reviews)
-app.use('/api/doctor/detail', doctorRoutes);
+// Doctor routes: public for detail and reviews, protected otherwise
 app.use('/api/doctor', (req, res, next) => {
-  if (req.method === 'GET' && /^\/\d+\/reviews$/.test(req.path)) {
+  const isPublicGet =
+    req.method === 'GET' &&
+    (/^\/detail\/\d+$/.test(req.path) || /^\/\d+\/reviews$/.test(req.path));
+  if (isPublicGet) {
     doctorRoutes(req, res, next);
   } else {
     authMiddleware()(req, res, next);
